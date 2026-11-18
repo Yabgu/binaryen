@@ -1,0 +1,33 @@
+(module
+ (type $0 (func))
+ (type $1 (cont $0))
+ (type $2 (func (result i32)))
+ (elem $declare func $body)
+ (tag $yield (type $0))
+ (export "go" (func $go))
+ (func $body (type $0)
+  (suspend $yield)
+ )
+ (func $go (type $2) (result i32)
+  (local $0 (ref null $1))
+  (local.set $0
+   (block $parked (result (ref null $1))
+    (resume $1 (on $yield $parked)
+     (cont.new $1
+      (ref.func $body)
+     )
+    )
+    (return
+     (i32.const 0)
+    )
+   )
+  )
+  (resume $1
+   (local.get $0)
+  )
+  (i32.const 1)
+ )
+)
+
+validate: 1
+resume_throw validate: 1

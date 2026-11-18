@@ -1007,6 +1007,49 @@ BINARYEN_API BinaryenExpressionRef BinaryenRefFunc(BinaryenModuleRef module,
 BINARYEN_API BinaryenExpressionRef BinaryenRefEq(BinaryenModuleRef module,
                                                  BinaryenExpressionRef left,
                                                  BinaryenExpressionRef right);
+
+// Stack switching.
+//
+// ContNew: 'type' is the continuation's heap type, that is, a `(cont $ft)` whose
+//          signature is the one the continuation will run, and 'func' is a
+//          reference to the function to run in it. The continuation is created
+//          but not started.
+// Suspend: 'tag' is the name of the control tag to suspend with, and 'args' are
+//          that tag's payload. Suspends the current continuation, handing control
+//          back to whoever resumed it.
+// Resume: 'cont' is the continuation to run, and 'contType' its heap type. The
+//         operands sent to the continuation are given in the sentTypes of the
+//         builder call; this form sends nothing and provides no handlers, so a
+//         suspension inside 'cont' escapes to the caller of the resume.
+// ResumeWithHandlers: the same, with `(on $tag $label)` clauses: handlerTags[i]
+//         names a tag, and handlerBlocks[i] the label an `on` clause for it
+//         branches to. A null block means `(on $tag switch)`.
+// ResumeThrow: resumes by throwing 'tag' with 'args' into 'cont' rather than
+//         sending it values.
+BINARYEN_API BinaryenExpressionRef BinaryenContNew(BinaryenModuleRef module,
+                                                   BinaryenHeapType type,
+                                                   BinaryenExpressionRef func);
+BINARYEN_API BinaryenExpressionRef BinaryenSuspend(BinaryenModuleRef module,
+                                                   const char* tag,
+                                                   BinaryenExpressionRef* args,
+                                                   BinaryenIndex numArgs);
+BINARYEN_API BinaryenExpressionRef BinaryenResume(BinaryenModuleRef module,
+                                                  BinaryenExpressionRef cont,
+                                                  BinaryenHeapType contType);
+BINARYEN_API BinaryenExpressionRef
+BinaryenResumeWithHandlers(BinaryenModuleRef module,
+                           BinaryenExpressionRef cont,
+                           BinaryenHeapType contType,
+                           const char** handlerTags,
+                           const char** handlerBlocks,
+                           BinaryenIndex numHandlers);
+BINARYEN_API BinaryenExpressionRef
+BinaryenResumeThrow(BinaryenModuleRef module,
+                    BinaryenExpressionRef cont,
+                    BinaryenHeapType contType,
+                    const char* tag,
+                    BinaryenExpressionRef* args,
+                    BinaryenIndex numArgs);
 BINARYEN_API BinaryenExpressionRef BinaryenTableGet(BinaryenModuleRef module,
                                                     const char* name,
                                                     BinaryenExpressionRef index,
@@ -3777,6 +3820,13 @@ BINARYEN_API void TypeBuilderSetSignatureType(TypeBuilderRef builder,
                                               BinaryenType paramTypes,
                                               BinaryenType resultTypes);
 // Sets the heap type at index `index` to a concrete struct type.
+// Sets the type at 'index' to a continuation type. 'funcType' is the heap type of
+// the function type the continuation runs, that is, the `$ft` in `(cont $ft)`.
+// Heap type slots are set before `TypeBuilderBuild`, and the continuation may
+// refer to a signature in the same builder.
+BINARYEN_API void TypeBuilderSetContinuation(TypeBuilderRef builder,
+                                             BinaryenIndex index,
+                                             BinaryenHeapType funcType);
 BINARYEN_API void TypeBuilderSetStructType(TypeBuilderRef builder,
                                            BinaryenIndex index,
                                            BinaryenType* fieldTypes,

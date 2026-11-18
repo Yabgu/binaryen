@@ -1698,6 +1698,98 @@ BinaryenExpressionRef BinaryenRefFunc(BinaryenModuleRef module,
   }
 }
 
+// Stack switching. The builders for all of these already existed in
+// wasm-builder.h; this is the C API surface that was missing.
+
+BinaryenExpressionRef BinaryenContNew(BinaryenModuleRef module,
+                                      BinaryenHeapType type,
+                                      BinaryenExpressionRef func) {
+  return static_cast<Expression*>(Builder(*(Module*)module).makeContNew(
+    HeapType(type), (Expression*)func));
+}
+
+BinaryenExpressionRef BinaryenSuspend(BinaryenModuleRef module,
+                                      const char* tag,
+                                      BinaryenExpressionRef* args,
+                                      BinaryenIndex numArgs) {
+  std::vector<Expression*> operands(numArgs);
+  for (BinaryenIndex i = 0; i < numArgs; ++i) {
+    operands[i] = (Expression*)args[i];
+  }
+  return static_cast<Expression*>(
+    Builder(*(Module*)module).makeSuspend(tag, operands));
+}
+
+BinaryenExpressionRef BinaryenResume(BinaryenModuleRef module,
+                                     BinaryenExpressionRef cont,
+                                     BinaryenHeapType contType) {
+  auto* wasm = (Module*)module;
+  // `operands` is an ExpressionList, which is the module arena's vector, so it
+  // must be built from the module's allocator and moved in; a std::vector will
+  // not bind to the `ExpressionList&&` parameter. Nothing is sent to the
+  // continuation here, and there are no handlers.
+  ExpressionList operands(wasm->allocator);
+  std::vector<Name> handlerTags;
+  std::vector<Name> handlerBlocks;
+  std::vector<Type> sentTypes;
+  return static_cast<Expression*>(Builder(*wasm).makeResume(handlerTags,
+                                                            handlerBlocks,
+                                                            sentTypes,
+                                                            std::move(operands),
+                                                            (Expression*)cont,
+                                                            HeapType(contType)));
+}
+
+BinaryenExpressionRef
+BinaryenResumeWithHandlers(BinaryenModuleRef module,
+                           BinaryenExpressionRef cont,
+                           BinaryenHeapType contType,
+                           const char** handlerTags,
+                           const char** handlerBlocks,
+                           BinaryenIndex numHandlers) {
+  auto* wasm = (Module*)module;
+  std::vector<Name> tags(numHandlers);
+  std::vector<Name> blocks(numHandlers);
+  for (BinaryenIndex i = 0; i < numHandlers; ++i) {
+    tags[i] = handlerTags[i];
+    // A null block is an `(on $tag switch)` clause, which the builder spells as
+    // the empty name. See the handlerBlocks comment on the Resume node.
+    blocks[i] = handlerBlocks[i] ? Name(handlerBlocks[i]) : Name();
+  }
+  ExpressionList operands(wasm->allocator);
+  std::vector<Type> sentTypes;
+  return static_cast<Expression*>(Builder(*wasm).makeResume(tags,
+                                                            blocks,
+                                                            sentTypes,
+                                                            std::move(operands),
+                                                            (Expression*)cont,
+                                                            HeapType(contType)));
+}
+
+BinaryenExpressionRef BinaryenResumeThrow(BinaryenModuleRef module,
+                                          BinaryenExpressionRef cont,
+                                          BinaryenHeapType contType,
+                                          const char* tag,
+                                          BinaryenExpressionRef* args,
+                                          BinaryenIndex numArgs) {
+  auto* wasm = (Module*)module;
+  ExpressionList operands(wasm->allocator);
+  for (BinaryenIndex i = 0; i < numArgs; ++i) {
+    operands.push_back((Expression*)args[i]);
+  }
+  std::vector<Name> handlerTags;
+  std::vector<Name> handlerBlocks;
+  std::vector<Type> sentTypes;
+  return static_cast<Expression*>(
+    Builder(*wasm).makeResumeThrow(tag,
+                                   handlerTags,
+                                   handlerBlocks,
+                                   sentTypes,
+                                   std::move(operands),
+                                   (Expression*)cont,
+                                   HeapType(contType)));
+}
+
 BinaryenExpressionRef BinaryenRefEq(BinaryenModuleRef module,
                                     BinaryenExpressionRef left,
                                     BinaryenExpressionRef right) {
@@ -6736,6 +6828,12 @@ void TypeBuilderSetSignatureType(TypeBuilderRef builder,
                                  BinaryenType resultTypes) {
   ((TypeBuilder*)builder)
     ->setHeapType(index, Signature(Type(paramTypes), Type(resultTypes)));
+}
+void TypeBuilderSetContinuation(TypeBuilderRef builder,
+                                BinaryenIndex index,
+                                BinaryenHeapType funcType) {
+  ((TypeBuilder*)builder)
+    ->setHeapType(index, Continuation(HeapType(funcType)));
 }
 void TypeBuilderSetStructType(TypeBuilderRef builder,
                               BinaryenIndex index,
