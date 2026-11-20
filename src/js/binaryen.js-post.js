@@ -2519,14 +2519,17 @@ function wrapModule(module, self = {}) {
   self['resume'] = function(cont, contType) {
     return Module['_BinaryenResume'](module, cont, contType);
   };
-  self['resume_with_handlers'] = function(cont, contType, handlerTags, handlerBlocks) {
+  self['resume_with_handlers'] = function(cont, contType, handlerTags, handlerBlocks, sentTypes) {
     // A null block is `(on $tag switch)`, which the C API spells as a null name.
+    // `sentTypes[i]` is the type of handler block i; one per handler, in the
+    // same order, because branch analysis indexes it by handler.
     return preserveStack(() => Module['_BinaryenResumeWithHandlers'](
       module,
       cont,
       contType,
       strsToStack(handlerTags),
       strsToStack(handlerBlocks.map((block) => block || null)),
+      i32sToStack(sentTypes),
       handlerTags.length));
   };
   self['resume_throw'] = function(cont, contType, tag, operands = []) {

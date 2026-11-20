@@ -69,6 +69,7 @@ int main() {
     ct,
     (const char*[]){"yield"},
     (const char*[]){[0] = "parked"},
+    (BinaryenType[]){ctRef},
     1);
   children[1] = BinaryenReturn(module, i32(module, 0));
   BinaryenExpressionRef parked = BinaryenBlock(module, "parked", children, 2, ctRef);

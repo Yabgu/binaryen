@@ -1746,21 +1746,28 @@ BinaryenResumeWithHandlers(BinaryenModuleRef module,
                            BinaryenHeapType contType,
                            const char** handlerTags,
                            const char** handlerBlocks,
+                           const BinaryenType* sentTypes,
                            BinaryenIndex numHandlers) {
   auto* wasm = (Module*)module;
   std::vector<Name> tags(numHandlers);
   std::vector<Name> blocks(numHandlers);
+  // `sentTypes[i]` is the type of handler block i — what a suspension branches
+  // to that label with. `BranchUtils` indexes it per handler, so it must be as
+  // long as `handlerBlocks`; an empty vector here aborted `dce` on a module
+  // that otherwise validated. It is a `std::vector<Type>`, not an arena vector,
+  // because `makeResume` copies it.
+  std::vector<Type> sentTypesVec(numHandlers);
   for (BinaryenIndex i = 0; i < numHandlers; ++i) {
     tags[i] = handlerTags[i];
     // A null block is an `(on $tag switch)` clause, which the builder spells as
     // the empty name. See the handlerBlocks comment on the Resume node.
     blocks[i] = handlerBlocks[i] ? Name(handlerBlocks[i]) : Name();
+    sentTypesVec[i] = Type(sentTypes[i]);
   }
   ExpressionList operands(wasm->allocator);
-  std::vector<Type> sentTypes;
   return static_cast<Expression*>(Builder(*wasm).makeResume(tags,
                                                             blocks,
-                                                            sentTypes,
+                                                            sentTypesVec,
                                                             std::move(operands),
                                                             (Expression*)cont,
                                                             HeapType(contType)));

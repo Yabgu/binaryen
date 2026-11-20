@@ -1042,6 +1042,7 @@ BinaryenResumeWithHandlers(BinaryenModuleRef module,
                            BinaryenHeapType contType,
                            const char** handlerTags,
                            const char** handlerBlocks,
+                           const BinaryenType* sentTypes,
                            BinaryenIndex numHandlers);
 BINARYEN_API BinaryenExpressionRef
 BinaryenResumeThrow(BinaryenModuleRef module,
