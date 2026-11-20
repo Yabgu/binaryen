@@ -20,6 +20,14 @@ function i32sToStack(i32s) {
   return ret;
 }
 
+function strsToStack(strs) {
+  const ret = stackAlloc(strs.length << 2);
+  for (let i = 0; i < strs.length; i++) {
+    HEAP32[(ret >>> 2) + i] = strToStack(strs[i]);
+  }
+  return ret;
+}
+
 function i8sToStack(i8s) {
   const ret = stackAlloc(i8s.length);
   HEAP8.set(i8s, ret);
@@ -2545,6 +2553,37 @@ function wrapModule(module, self = {}) {
     return Module['_BinaryenThrowRef'](module, exnref);
   };
 
+  // Stack switching. `cont.new` takes the continuation's heap type and a
+  // reference to the function to run; `suspend` a tag and its payload; `resume` a
+  // continuation plus the handlers for tags it may suspend with.
+  self['cont'] = {
+    'new'(type, func) {
+      return Module['_BinaryenContNew'](module, type, func);
+    }
+  };
+  self['suspend'] = function(tag, operands = []) {
+    return preserveStack(() => Module['_BinaryenSuspend'](module, strToStack(tag), i32sToStack(operands), operands.length));
+  };
+  self['resume'] = function(cont, contType) {
+    return Module['_BinaryenResume'](module, cont, contType);
+  };
+  self['resume_with_handlers'] = function(cont, contType, handlerTags, handlerBlocks, sentTypes) {
+    // A null block is `(on $tag switch)`, which the C API spells as a null name.
+    // `sentTypes[i]` is the type of handler block i; one per handler, in the
+    // same order, because branch analysis indexes it by handler.
+    return preserveStack(() => Module['_BinaryenResumeWithHandlers'](
+      module,
+      cont,
+      contType,
+      strsToStack(handlerTags),
+      strsToStack(handlerBlocks.map((block) => block || null)),
+      i32sToStack(sentTypes),
+      handlerTags.length));
+  };
+  self['resume_throw'] = function(cont, contType, tag, operands = []) {
+    return preserveStack(() => Module['_BinaryenResumeThrow'](module, cont, contType, strToStack(tag), i32sToStack(operands), operands.length));
+  };
+
   self['tuple'] = {
     'make'(elements) {
       return preserveStack(() => Module['_BinaryenTupleMake'](module, i32sToStack(elements), elements.length));
@@ -3108,6 +3147,10 @@ Module['TypeBuilder'] = function(size) {
   };
   this['setSignatureType'] = function(index, paramTypes, resultTypes) {
     Module['_TypeBuilderSetSignatureType'](builder, index, paramTypes, resultTypes);
+  };
+  this['setContinuation'] = function(index, funcType) {
+    // `funcType` is the heap type of the function type the continuation runs.
+    Module['_TypeBuilderSetContinuation'](builder, index, funcType);
   };
   this['setStructType'] = function(index, fields = []) {
     // fields are assumed to be { type: type ref, packedType: type ref, mutable: bool }
@@ -4843,6 +4886,19 @@ Module['RefFunc'] = makeExpressionWrapper(Module['_BinaryenRefFuncId'](), {
     preserveStack(() => { Module['_BinaryenRefFuncSetFunc'](expr, strToStack(funcName)) });
   }
 });
+
+// Stack switching. The constructors are on the module (`module.cont.new`,
+// `module.suspend`, `module.resume`, ...); these wrappers name the expression
+// kinds so an `ExpressionId` can be compared against them. Accessors (the
+// continuation of a `resume`, the tag of a `suspend`) would need more of the C
+// API than this change adds.
+Module['ContNew'] = makeExpressionWrapper(Module['_BinaryenContNewId'](), {});
+
+Module['Suspend'] = makeExpressionWrapper(Module['_BinaryenSuspendId'](), {});
+
+Module['Resume'] = makeExpressionWrapper(Module['_BinaryenResumeId'](), {});
+
+Module['ResumeThrow'] = makeExpressionWrapper(Module['_BinaryenResumeThrowId'](), {});
 
 Module['RefEq'] = makeExpressionWrapper(Module['_BinaryenRefEqId'](), {
   'getLeft'(expr) {
